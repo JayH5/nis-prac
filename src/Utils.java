@@ -2,6 +2,8 @@ import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
@@ -49,5 +51,21 @@ public final class Utils {
     }
 
     return Hex.toHexString(hash);
+  }
+
+  /** Generate an RSA public/private key pair. Default initialization. */
+  public static KeyPair generateRSAKeyPair() {
+    KeyPair keyPair = null;
+    try {
+      KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
+      keyPair = generator.generateKeyPair(); // Default settings for now...
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("SHA-1 algorithm not found!");
+      e.printStackTrace();
+    } catch (NoSuchProviderException e) {
+      System.err.println("BouncyCastle provider not found!");
+      e.printStackTrace();
+    }
+    return keyPair;
   }
 }
