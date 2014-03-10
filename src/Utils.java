@@ -9,9 +9,15 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.util.ArrayList;
 import java.util.List;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 import org.bouncycastle.util.encoders.Hex;
 
 public final class Utils {
+
+  private static final int KEYSIZE_RSA = 2048;
+  private static final int KEYSIZE_AES = 256;
+
   /** Read a file into a list of Strings. */
   public static List<String> readFileLines(String path) throws IOException, FileNotFoundException {
     List<String> lines = new ArrayList<String>();
@@ -53,14 +59,15 @@ public final class Utils {
     return Hex.toHexString(hash);
   }
 
-  /** Generate an RSA public/private key pair. Default initialization. */
+  /** Generate an RSA public/private key pair. */
   public static KeyPair generateRSAKeyPair() {
     KeyPair keyPair = null;
     try {
       KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
-      keyPair = generator.generateKeyPair(); // Default settings for now...
+      generator.initialize(KEYSIZE_RSA);
+      keyPair = generator.generateKeyPair();
     } catch (NoSuchAlgorithmException e) {
-      System.err.println("SHA-1 algorithm not found!");
+      System.err.println("RSA algorithm not found!");
       e.printStackTrace();
     } catch (NoSuchProviderException e) {
       System.err.println("BouncyCastle provider not found!");
@@ -68,4 +75,22 @@ public final class Utils {
     }
     return keyPair;
   }
+
+  /** Generate a secret key suitable for AES. */
+  public static SecretKey generateAESKeyPair() {
+    SecretKey key = null;
+    try {
+      KeyGenerator generator = KeyGenerator.getInstance("AES", "BC");
+      generator.init(KEYSIZE_AES);
+      key = generator.generateKey();
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("AES algorithm not found!");
+      e.printStackTrace();
+    } catch (NoSuchProviderException e) {
+      System.err.println("BouncyCastle provider not found!");
+      e.printStackTrace();
+    }
+    return key;
+  }
+
 }
