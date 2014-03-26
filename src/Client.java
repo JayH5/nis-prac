@@ -1,7 +1,11 @@
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.security.KeyStore;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
+import java.security.cert.Certificate;
+import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -19,15 +23,18 @@ public class Client {
 
   private static final String BASE_URL = "http://localhost:8080";
 
-  public static void main(String[] args) throws Exception {
-    Client client = new Client();
-    client.performHandshake();
-  }
-
   private final SecureRandom random = new SecureRandom();
   private final AuthManager authManager = new AuthManager();
 
-  public Client() {
+  private KeyStore keyStore;
+  private Cipher rsaCrypto;
+
+  public Client(KeyStore keyStore) {
+    this.keyStore = keyStore;
+
+    // Testing...
+    Certificate serverCert = Utils.loadCertificateFromKeyStore(keyStore, "server");
+    Utils.getRsaCipherInstance(Cipher.ENCRYPT_MODE, serverCert);
   }
 
   public void performHandshake() throws ClientProtocolException, IOException {
@@ -56,6 +63,11 @@ public class Client {
     } else {
       System.out.println("Server auth failed!");
     }
+  }
+
+  public static void main(String[] args) throws Exception {
+    Client client = new Client(Utils.loadJKSKeystore("client.jks", "fishtitty"));
+    client.performHandshake();
   }
 
 }

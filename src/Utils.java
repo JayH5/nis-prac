@@ -1,19 +1,30 @@
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.InputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 import java.security.InvalidKeyException;
+import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
+import java.security.UnrecoverableEntryException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.util.encoders.Hex;
@@ -21,6 +32,7 @@ import org.bouncycastle.util.encoders.Hex;
 public final class Utils {
 
   private static final int KEYSIZE_RSA = 2048;
+  private static final String ALGORITHM_RSA = "RSA/ECB/PKCS1Padding";
   private static final int KEYSIZE_AES = 256;
 
   /** Read a file into a list of Strings. */
@@ -139,6 +151,138 @@ public final class Utils {
   /** Generate random string for session keys. */
   public static String generateSessionKey(Random random) {
     return new BigInteger(130, random).toString(32);
+  }
+
+  public static KeyStore loadJKSKeystore(String filename, String password) {
+    KeyStore keyStore = null;
+    try {
+      keyStore = KeyStore.getInstance("JKS");
+    } catch (KeyStoreException e) {
+      System.err.println("Error getting KeyStore instance!");
+      e.printStackTrace();
+    }
+    String path = "keys/" + filename;
+    InputStream in = null;
+    try {
+      in = new FileInputStream(path);
+      keyStore.load(in, password.toCharArray());
+    } catch (FileNotFoundException e) {
+      System.err.println("File not found at " + path);
+      e.printStackTrace();
+    } catch (IOException e) {
+      System.err.println("Error reading file at " + path);
+      e.printStackTrace();
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("Algorithm not found!");
+      e.printStackTrace();
+    } catch (CertificateException e) {
+      System.err.println("Certificate problem!");
+      e.printStackTrace();
+    } finally {
+      if (in != null) {
+        try {
+          in.close();
+        } catch (IOException ignored) {
+        }
+      }
+    }
+
+    return keyStore;
+  }
+
+  public static Certificate loadCertificateFromKeyStore(KeyStore keyStore, String alias) {
+    KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias);
+    if (entry instanceof KeyStore.TrustedCertificateEntry) {
+      return ((KeyStore.TrustedCertificateEntry) entry).getTrustedCertificate();
+    }
+    return null;
+  }
+
+  public static PrivateKey loadPrivateKeyFromKeyStore(KeyStore keyStore, String alias,
+        String password) {
+    KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias, password);
+    if (entry instanceof KeyStore.PrivateKeyEntry) {
+      return ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
+    }
+    return null;
+  }
+
+  public static KeyStore.Entry loadEntryFromKeyStore(KeyStore keyStore, String alias,
+        String password) {
+    KeyStore.Entry entry = null;
+    try {
+      entry = keyStore.getEntry(alias, new KeyStore.PasswordProtection(password.toCharArray()));
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("Algorithm not found!");
+      e.printStackTrace();
+    } catch (KeyStoreException e) {
+      System.err.println("Error getting KeyStore instance!");
+      e.printStackTrace();
+    } catch (UnrecoverableEntryException e) {
+      System.err.println("Could not recover key entry!");
+      e.printStackTrace();
+    }
+    return entry;
+  }
+
+  public static KeyStore.Entry loadEntryFromKeyStore(KeyStore keyStore, String alias) {
+    KeyStore.Entry entry = null;
+    try {
+      entry = keyStore.getEntry(alias, null);
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("Algorithm not found!");
+      e.printStackTrace();
+    } catch (KeyStoreException e) {
+      System.err.println("Error getting KeyStore instance!");
+      e.printStackTrace();
+    } catch (UnrecoverableEntryException e) {
+      System.err.println("Could not recover key entry!");
+      e.printStackTrace();
+    }
+    return entry;
+  }
+
+  public static Cipher getRsaCipherInstance(int mode, Certificate cert) {
+    Cipher cipher = getCipherInstance(ALGORITHM_RSA);
+    if (cipher != null) {
+      try {
+        cipher.init(mode, cert);
+      } catch (InvalidKeyException e) {
+        System.err.println("Invalid key!");
+        e.printStackTrace();
+      }
+    }
+    return cipher;
+  }
+
+  public static Cipher getRsaCipherInstance(int mode, Key key) {
+    Cipher cipher = getCipherInstance(ALGORITHM_RSA);
+    if (cipher != null) {
+      try {
+        cipher.init(mode, key);
+      } catch (InvalidKeyException e) {
+        System.err.println("Invalid key!");
+        e.printStackTrace();
+      }
+    }
+    return cipher;
+  }
+
+  public static Cipher getCipherInstance(String algorithm) {
+    Cipher cipher = null;
+    try {
+      cipher = Cipher.getInstance(algorithm, "BC");
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println(algorithm + " algorithm not found!");
+      e.printStackTrace();
+    } catch (NoSuchProviderException e) {
+      System.err.println("BouncyCastle provider not found!");
+      e.printStackTrace();
+    } catch (NoSuchPaddingException e) {
+      System.err.println(algorithm + " padding not found!");
+      e.printStackTrace();
+    }
+    return cipher;
   }
 
 }
