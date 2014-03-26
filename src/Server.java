@@ -63,8 +63,6 @@ public class Server {
   private final String docRoot;
   private final HttpService httpService;
 
-  private AsymmetricCrypto rsaCrypto;
-
   public Server(String docRoot) {
     this.docRoot = docRoot;
 
