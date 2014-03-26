@@ -12,8 +12,6 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.security.SecureRandom;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import javax.crypto.spec.SecretKeySpec;
@@ -247,6 +245,7 @@ public class Server {
           response.setEntity(entity);
         } else if ("confirm".equals(action)) {
           if (pendingAuth != null && pendingAuth.equals(token)) {
+            pendingAuth += token;
             updateSessionKey();
             response.setStatusCode(HttpStatus.SC_OK);
             StringEntity entity = new StringEntity("Oh hai, client!");
@@ -262,14 +261,7 @@ public class Server {
 
     private void updateSessionKey() {
       if (pendingAuth != null) {
-        SecretKeySpec secretKey = new SecretKeySpec(pendingAuth.getBytes(), "HmacSHA1");
-        Calendar cal = Calendar.getInstance();
-        Date validFrom = cal.getTime();
-        cal.add(Calendar.HOUR_OF_DAY, 1);
-        Date validUntil = cal.getTime();
-        AuthManager.SessionKey sessionKey =
-            new AuthManager.SessionKey(secretKey, validFrom, validUntil);
-        authManager.setSessionKey(sessionKey);
+        authManager.setSessionKey(pendingAuth);
         pendingAuth = null;
       }
     }

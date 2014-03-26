@@ -2,8 +2,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.security.SecureRandom;
 import java.security.Security;
-import java.util.Calendar;
-import java.util.Date;
 import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -54,20 +52,10 @@ public class Client {
       System.out.println("Server response 2: " + resp);
 
 
-      saveSessionKey(sessionKeyString);
+      authManager.setSessionKey(sessionKeyString);
     } else {
       System.out.println("Server auth failed!");
     }
   }
 
-  private void saveSessionKey(String key) {
-    SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(), "HmacSHA1");
-    Calendar cal = Calendar.getInstance();
-    Date validFrom = cal.getTime();
-    cal.add(Calendar.HOUR_OF_DAY, 1);
-    Date validUntil = cal.getTime();
-    AuthManager.SessionKey sessionKey =
-        new AuthManager.SessionKey(secretKey, validFrom, validUntil);
-    authManager.setSessionKey(sessionKey);
-  }
 }

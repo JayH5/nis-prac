@@ -1,4 +1,5 @@
 import java.math.BigInteger;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Random;
 import javax.crypto.spec.SecretKeySpec;
@@ -6,13 +7,20 @@ import org.bouncycastle.util.encoders.Hex;
 
 public class AuthManager {
 
+  private static final String KEY_ALGORITHM = "HmacSHA1";
+
   private SessionKey sessionKey;
 
   public AuthManager() {
   }
 
-  public void setSessionKey(SessionKey key) {
-    sessionKey = key;
+  public void setSessionKey(String key) {
+    SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(), "HmacSHA1");
+    Calendar cal = Calendar.getInstance();
+    Date validFrom = cal.getTime();
+    cal.add(Calendar.HOUR_OF_DAY, 1);
+    Date validUntil = cal.getTime();
+    sessionKey = new SessionKey(secretKey, validFrom, validUntil);
   }
 
   public boolean isValidSignature(String signature, byte[] data) {
