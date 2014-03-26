@@ -148,7 +148,7 @@ public class Server {
         System.out.println("Signature verified!");
       } else {
         System.out.println("Signature check failed!");
-        forbidden(response);
+        HttpUtils.forbidden(response);
         return;
       }
 
@@ -165,11 +165,7 @@ public class Server {
 
       } else if (!file.canRead() || file.isDirectory()) {
 
-        response.setStatusCode(HttpStatus.SC_FORBIDDEN);
-        StringEntity entity = new StringEntity(
-            "<html><body><h1>Access denied</h1></body></html>",
-            ContentType.create("text/html", "UTF-8"));
-        response.setEntity(entity);
+        HttpUtils.forbidden(response);
         System.out.println("Cannot read file " + file.getPath());
 
       } else {
@@ -183,122 +179,6 @@ public class Server {
 
   }
 
-  static class AuthorizationHandler implements HttpRequestHandler {
-
-    private final AuthManager authManager;
-    private final SecureRandom random = new SecureRandom();
-
-    // The session key for auth that is not yet confirmed
-    private String pendingAuth;
-
-    private Cipher decipher;
-    private Cipher encipher;
-
-    public AuthorizationHandler(KeyStore keyStore, AuthManager authManager) {
-      this.authManager = authManager;
-      initCrypto(keyStore);
-    }
-
-    private void initCrypto(KeyStore keyStore) {
-      Certificate clientCert = Utils.loadCertificateFromKeyStore(keyStore, "client");
-      encipher = Utils.getRsaCipherInstance(Cipher.ENCRYPT_MODE, clientCert);
-
-      PrivateKey serverKey = Utils.loadPrivateKeyFromKeyStore(keyStore, "server", "tittyfish");
-      decipher = Utils.getRsaCipherInstance(Cipher.DECRYPT_MODE, serverKey);
-    }
-
-    @Override
-    public void handle(HttpRequest request, HttpResponse response, HttpContext context)
-        throws HttpException, IOException {
-      String method = request.getRequestLine().getMethod().toUpperCase(Locale.ENGLISH);
-      if (!method.equals("POST")) {
-        throw new MethodNotSupportedException(method + " method not supported");
-      }
-      String target = request.getRequestLine().getUri();
-
-      URI uri = null;
-      try {
-        uri = new URI(target);
-      } catch (URISyntaxException e) {
-        throw new ProtocolException(target + " uri not supported");
-      }
-
-      System.out.println("target = " + target);
-
-      // Get auth post form data
-      String entityContent = null;
-      if (request instanceof HttpEntityEnclosingRequest) {
-        HttpEntity entity = ((HttpEntityEnclosingRequest) request).getEntity();
-        entityContent = EntityUtils.toString(entity);
-        System.out.println("Incoming entity content (bytes): " + entityContent.length());
-      }
-
-      String decryptedEntity = decrypt(entityContent);
-
-      System.out.println("Entity: " + decryptedEntity);
-
-      // Find signature among parameters
-      List<NameValuePair> formData =
-          URLEncodedUtils.parse(decryptedEntity, Charset.forName("UTF-8"));
-      String action = null;
-      String token = null;
-      for (NameValuePair param : formData) {
-        if ("action".equals(param.getName())) {
-          action = param.getValue();
-        } else if ("token".equals(param.getName())) {
-          token = param.getValue();
-        }
-      }
-
-      if (action != null && token != null) {
-        if ("initiate".equals(action)) {
-          // Take token, repond with new random number
-          String responseToken = Utils.generateChallengeValue(random);
-          pendingAuth = token + responseToken;
-          response.setStatusCode(HttpStatus.SC_OK);
-          StringEntity entity = new StringEntity(encrypt(pendingAuth));
-          response.setEntity(entity);
-        } else if ("confirm".equals(action)) {
-          if (pendingAuth != null && pendingAuth.equals(token)) {
-            pendingAuth += token;
-            updateSessionKey();
-            response.setStatusCode(HttpStatus.SC_OK);
-            StringEntity entity = new StringEntity(encrypt("Oh hai, client!"));
-            response.setEntity(entity);
-          } else {
-            forbidden(response);
-          }
-        }
-      } else {
-        forbidden(response);
-      }
-    }
-
-    private String encrypt(String message) {
-      return Utils.encrypt(encipher, message);
-    }
-
-    private String decrypt(String message) {
-      return Utils.decrypt(decipher, message);
-    }
-
-    private void updateSessionKey() {
-      if (pendingAuth != null) {
-        authManager.setSessionKey(pendingAuth);
-        pendingAuth = null;
-      }
-    }
-
-  }
-
-  private static void forbidden(HttpResponse response) {
-    response.setStatusCode(HttpStatus.SC_FORBIDDEN);
-    StringEntity entity = new StringEntity(
-        "<html><body><h1>403 FORBIDDEN</h1></body></html>",
-        ContentType.create("text/html", "UTF-8"));
-    response.setEntity(entity);
-  }
-
   /** Default handler for all unknown requests. Just returns 404 */
   static class DefaultHandler implements HttpRequestHandler {
     @Override
@@ -309,11 +189,7 @@ public class Server {
       System.out.println("Unknown request: " + method + " " + target);
 
       // Respond with a 404
-      response.setStatusCode(HttpStatus.SC_NOT_FOUND);
-      StringEntity entity = new StringEntity(
-          "<html><body><h1>404 NOT FOUND</h1></body></html>",
-          ContentType.create("text/html", "UTF-8"));
-      response.setEntity(entity);
+      HttpUtils.notFound(response);
     }
   }
 
