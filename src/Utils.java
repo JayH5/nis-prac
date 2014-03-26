@@ -81,6 +81,25 @@ public final class Utils {
     return signature;
   }
 
+  public static byte[] mac(byte[] data, SecretKeySpec key) {
+    byte[] signature = null;
+    try {
+      Mac mac = Mac.getInstance(key.getAlgorithm(), "BC");
+      mac.init(key);
+      signature = mac.doFinal(data);
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println(key.getAlgorithm() + " algorithm not found!");
+      e.printStackTrace();
+    } catch (NoSuchProviderException e) {
+      System.err.println("BouncyCastle provider not found!");
+      e.printStackTrace();
+    } catch (InvalidKeyException e) {
+      System.err.println("Invalid key!");
+      e.printStackTrace();
+    }
+    return signature;
+  }
+
   /** Generate an RSA public/private key pair. */
   public static KeyPair generateRSAKeyPair() {
     KeyPair keyPair = null;
