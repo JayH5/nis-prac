@@ -11,9 +11,13 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
+import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.cert.Certificate;
 import java.util.List;
 import java.util.Locale;
+import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.http.ConnectionClosedException;
@@ -55,7 +59,7 @@ public class Server {
   private static final int PORT = 8080;
 
   public static void main(String[] args) throws Exception {
-    Server server = new Server("files/");
+    Server server = new Server(Utils.loadJKSKeyStore("server.jks", "tittyfish"), "files/");
     server.listen(PORT);
   }
 
@@ -63,7 +67,7 @@ public class Server {
   private final String docRoot;
   private final HttpService httpService;
 
-  public Server(String docRoot) {
+  public Server(KeyStore keyStore, String docRoot) {
     this.docRoot = docRoot;
 
     // Set up the HTTP protocol processor
@@ -77,16 +81,12 @@ public class Server {
 
     // Set up request handlers
     UriHttpRequestHandlerMapper reqistry = new UriHttpRequestHandlerMapper();
-    reqistry.register("/auth", new AuthorizationHandler(authManager));
+    reqistry.register("/auth", new AuthorizationHandler(keyStore, authManager));
     reqistry.register("/files", new FileHandler(authManager, docRoot));
     reqistry.register("*", new DefaultHandler());
 
     // Set up the HTTP service
     httpService = new HttpService(httpproc, reqistry);
-  }
-
-  private void initCrypto() {
-    // Load key from keystore, create rsaCrypto...
   }
 
   public void listen(int port) throws IOException {
@@ -191,8 +191,20 @@ public class Server {
     // The session key for auth that is not yet confirmed
     private String pendingAuth;
 
-    public AuthorizationHandler(AuthManager authManager) {
+    private Cipher decipher;
+    private Cipher encipher;
+
+    public AuthorizationHandler(KeyStore keyStore, AuthManager authManager) {
       this.authManager = authManager;
+      initCrypto(keyStore);
+    }
+
+    private void initCrypto(KeyStore keyStore) {
+      Certificate clientCert = Utils.loadCertificateFromKeyStore(keyStore, "client");
+      encipher = Utils.getRsaCipherInstance(Cipher.ENCRYPT_MODE, clientCert);
+
+      PrivateKey serverKey = Utils.loadPrivateKeyFromKeyStore(keyStore, "server", "tittyfish");
+      decipher = Utils.getRsaCipherInstance(Cipher.DECRYPT_MODE, serverKey);
     }
 
     @Override
@@ -221,8 +233,13 @@ public class Server {
         System.out.println("Incoming entity content (bytes): " + entityContent.length());
       }
 
+      String decryptedEntity = decrypt(entityContent);
+
+      System.out.println("Entity: " + decryptedEntity);
+
       // Find signature among parameters
-      List<NameValuePair> formData = URLEncodedUtils.parse(entityContent, Charset.forName("UTF-8"));
+      List<NameValuePair> formData =
+          URLEncodedUtils.parse(decryptedEntity, Charset.forName("UTF-8"));
       String action = null;
       String token = null;
       for (NameValuePair param : formData) {
@@ -236,17 +253,17 @@ public class Server {
       if (action != null && token != null) {
         if ("initiate".equals(action)) {
           // Take token, repond with new random number
-          String responseToken = nextSessionId();
+          String responseToken = Utils.generateChallengeValue(random);
           pendingAuth = token + responseToken;
           response.setStatusCode(HttpStatus.SC_OK);
-          StringEntity entity = new StringEntity(pendingAuth);
+          StringEntity entity = new StringEntity(encrypt(pendingAuth));
           response.setEntity(entity);
         } else if ("confirm".equals(action)) {
           if (pendingAuth != null && pendingAuth.equals(token)) {
             pendingAuth += token;
             updateSessionKey();
             response.setStatusCode(HttpStatus.SC_OK);
-            StringEntity entity = new StringEntity("Oh hai, client!");
+            StringEntity entity = new StringEntity(encrypt("Oh hai, client!"));
             response.setEntity(entity);
           } else {
             forbidden(response);
@@ -257,6 +274,14 @@ public class Server {
       }
     }
 
+    private String encrypt(String message) {
+      return Utils.encrypt(encipher, message);
+    }
+
+    private String decrypt(String message) {
+      return Utils.decrypt(decipher, message);
+    }
+
     private void updateSessionKey() {
       if (pendingAuth != null) {
         authManager.setSessionKey(pendingAuth);
@@ -264,9 +289,6 @@ public class Server {
       }
     }
 
-    private String nextSessionId() {
-      return new BigInteger(130, random).toString(32);
-    }
   }
 
   private static void forbidden(HttpResponse response) {

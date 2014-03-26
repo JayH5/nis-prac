@@ -24,11 +24,20 @@ import java.util.Random;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.BadPaddingException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+
+import org.apache.commons.codec.binary.Base64;
 import org.bouncycastle.util.encoders.Hex;
 
+/**
+ * Utils is *meant* to hold a bunch of handy static methods but it's ended up
+ * being a place to catch all the hundreds of crypto exceptions thrown by Java.
+ * The idea is to store boilerplate/uninteresting code.
+ */
 public final class Utils {
 
   private static final int KEYSIZE_RSA = 2048;
@@ -76,6 +85,7 @@ public final class Utils {
     return Hex.toHexString(hash);
   }
 
+  /** Generate the Hmac/SHA-1 digest for the given data using the given key. */
   public static byte[] hmacSha1(byte[] data, byte[] key) {
     byte[] signature = null;
     try {
@@ -95,6 +105,10 @@ public final class Utils {
     return signature;
   }
 
+  /**
+   * Generate the keyed MAC for the given data with the given key and algorithm
+   * specified by the key.
+   */
   public static byte[] mac(byte[] data, SecretKeySpec key) {
     byte[] signature = null;
     try {
@@ -149,11 +163,12 @@ public final class Utils {
   }
 
   /** Generate random string for session keys. */
-  public static String generateSessionKey(Random random) {
+  public static String generateChallengeValue(Random random) {
     return new BigInteger(130, random).toString(32);
   }
 
-  public static KeyStore loadJKSKeystore(String filename, String password) {
+  /** Load a KeyStore from a Jave Key Store (.jks) file of the given name. */
+  public static KeyStore loadJKSKeyStore(String filename, String password) {
     KeyStore keyStore = null;
     try {
       keyStore = KeyStore.getInstance("JKS");
@@ -190,6 +205,7 @@ public final class Utils {
     return keyStore;
   }
 
+  /** Load a Certificate from the given KeyStore with the given alias. */
   public static Certificate loadCertificateFromKeyStore(KeyStore keyStore, String alias) {
     KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias);
     if (entry instanceof KeyStore.TrustedCertificateEntry) {
@@ -198,6 +214,7 @@ public final class Utils {
     return null;
   }
 
+  /** Load a PrivateKey from the given KeyStore with the given alias. */
   public static PrivateKey loadPrivateKeyFromKeyStore(KeyStore keyStore, String alias,
         String password) {
     KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias, password);
@@ -207,6 +224,10 @@ public final class Utils {
     return null;
   }
 
+  /**
+   * Load an entry from the given KeyStore with the given alias. The entry must
+   * not have any password protection.
+   */
   public static KeyStore.Entry loadEntryFromKeyStore(KeyStore keyStore, String alias,
         String password) {
     KeyStore.Entry entry = null;
@@ -225,6 +246,9 @@ public final class Utils {
     return entry;
   }
 
+  /**
+   * Load an entry from the given KeyStore with the given alias and password.
+   */
   public static KeyStore.Entry loadEntryFromKeyStore(KeyStore keyStore, String alias) {
     KeyStore.Entry entry = null;
     try {
@@ -242,6 +266,10 @@ public final class Utils {
     return entry;
   }
 
+  /**
+   * Get a Cipher with the default RSA implementation, initialized with the
+   * given mode and certificate.
+   */
   public static Cipher getRsaCipherInstance(int mode, Certificate cert) {
     Cipher cipher = getCipherInstance(ALGORITHM_RSA);
     if (cipher != null) {
@@ -255,6 +283,10 @@ public final class Utils {
     return cipher;
   }
 
+  /**
+   * Get a Cipher with the default RSA implementation, initialized with the
+   * given mode and key.
+   */
   public static Cipher getRsaCipherInstance(int mode, Key key) {
     Cipher cipher = getCipherInstance(ALGORITHM_RSA);
     if (cipher != null) {
@@ -268,6 +300,7 @@ public final class Utils {
     return cipher;
   }
 
+  /** Get a Cipher for the given algorithm using the BouncyCastle provider. */
   public static Cipher getCipherInstance(String algorithm) {
     Cipher cipher = null;
     try {
@@ -283,6 +316,44 @@ public final class Utils {
       e.printStackTrace();
     }
     return cipher;
+  }
+
+  /**
+   * Encrypts a Base64 encoded message using the given cipher. Cipher must be in
+   * encryption mode.
+   */
+  public static String encrypt(Cipher cipher, String message) {
+    String output = null;
+    try {
+      byte[] data = cipher.doFinal(message.getBytes());
+      output = new String(Base64.encodeBase64(data));
+    } catch (IllegalBlockSizeException e) {
+      System.err.println("Illegal block size!");
+      e.printStackTrace();
+    } catch (BadPaddingException e) {
+      System.err.println("Bad padding!");
+      e.printStackTrace();
+    }
+    return output;
+  }
+
+  /**
+   * Decrypts a Base64 encoded message using the given cipher. Cipher must be in
+   * decryption mode.
+   */
+  public static String decrypt(Cipher cipher, String message) {
+    String output = null;
+    try {
+      byte[] data = cipher.doFinal(Base64.decodeBase64(message.getBytes()));
+      output = new String(data);
+    } catch (IllegalBlockSizeException e) {
+      System.err.println("Illegal block size!");
+      e.printStackTrace();
+    } catch (BadPaddingException e) {
+      System.err.println("Bad padding!");
+      e.printStackTrace();
+    }
+    return output;
   }
 
 }
