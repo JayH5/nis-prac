@@ -2,6 +2,7 @@ import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
@@ -10,7 +11,9 @@ import java.security.NoSuchProviderException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.util.encoders.Hex;
 
 public final class Utils {
@@ -57,6 +60,25 @@ public final class Utils {
     }
 
     return Hex.toHexString(hash);
+  }
+
+  public static byte[] hmacSha1(byte[] data, byte[] key) {
+    byte[] signature = null;
+    try {
+      Mac mac = Mac.getInstance("HmacSHA1", "BC");
+      mac.init(new SecretKeySpec(key, "HmacSHA1"));
+      signature = mac.doFinal(data);
+    } catch (NoSuchAlgorithmException e) {
+      System.err.println("HmacSHA-1 algorithm not found!");
+      e.printStackTrace();
+    } catch (NoSuchProviderException e) {
+      System.err.println("BouncyCastle provider not found!");
+      e.printStackTrace();
+    } catch (InvalidKeyException e) {
+      System.err.println("Invalid key!");
+      e.printStackTrace();
+    }
+    return signature;
   }
 
   /** Generate an RSA public/private key pair. */
