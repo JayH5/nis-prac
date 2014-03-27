@@ -56,16 +56,24 @@ public class Server {
   private static final int PORT = 8080;
 
   public static void main(String[] args) throws Exception {
-    Server server = new Server(Utils.loadKeyStore("JKS", "server.jks", "tittyfish"), "files/");
+    Server server = new Server(Utils.loadKeyStore("JKS", "server.jks", "tittyfish"), "./serverfiles");
     server.listen(PORT);
   }
 
   // Document root directory
-  private final String docRoot;
+  private final File docRoot;
   private final HttpService httpService;
 
-  public Server(KeyStore keyStore, String docRoot) {
-    this.docRoot = docRoot;
+  public Server(KeyStore keyStore, String path) {
+    docRoot = new File(path);
+    if (docRoot.exists() && !docRoot.isDirectory()) {
+      throw new IllegalArgumentException("Document root must be a directory!");
+    }
+
+    // Create directory if it doesn' already exist
+    if (!docRoot.exists()) {
+      docRoot.mkdirs();
+    }
 
     // Set up the HTTP protocol processor
     HttpProcessor httpproc = HttpProcessorBuilder.create()

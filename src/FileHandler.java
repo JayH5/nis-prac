@@ -18,9 +18,9 @@ import org.apache.http.protocol.HttpRequestHandler;
 
 public class FileHandler implements HttpRequestHandler {
   private final AuthManager authManager;
-  private final String docRoot;
+  private final File docRoot;
 
-  public FileHandler(AuthManager authManager, String docRoot) {
+  public FileHandler(AuthManager authManager, File docRoot) {
     this.authManager = authManager;
     this.docRoot = docRoot;
   }

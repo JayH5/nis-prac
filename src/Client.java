@@ -34,6 +34,10 @@ public class Client {
    */
   private static final Pattern FILE_PATTERN = Pattern.compile("^(?<id>ID\\d{3})-(?<details>.+)$");
 
+  /** Regex for files sent/received to/from server. */
+  private static final Pattern PACKAGED_FILE_PATTERN =
+      Pattern.compile("^(?<id>ID\\d{3})(?<encrypteddetails>.+)(?<hash>.{40})$"); //" sublime_text2
+
   private final SecureRandom random = new SecureRandom();
   private final AuthManager authManager = new AuthManager();
 
@@ -107,8 +111,11 @@ public class Client {
     return Utils.decrypt(rsaDecipher, message);
   }
 
-  /** Encrypt message and append digest. */
-  private String prepareFile(String file) {
+  /**
+   * Package the file to be sent.
+   * F = ID||Encrypted[DETAILS]||hash[ID||DETAILS]
+   */
+  private String packageFile(String file) {
     Matcher matcher = FILE_PATTERN.matcher(file);
     if (!matcher.matches()) {
       return null;
@@ -125,6 +132,36 @@ public class Client {
     return message;
   }
 
+  /**
+   * Unpackage a file from the form sent to the server.
+   * F = ID||"-"||DETAILS
+   */
+  private String unpackageFile(String packagedFile) {
+    Matcher matcher = PACKAGED_FILE_PATTERN.matcher(packagedFile);
+    if (!matcher.matches()) {
+      System.err.println("Received file did not match format!");
+      return null;
+    }
+
+    // Get the various parts of the packaged file
+    String id = matcher.group("id");
+    String encryptedDetails = matcher.group("encrypteddetails");
+    String hash = matcher.group("hash");
+
+    // Decrypt the details
+    String details = aesDecrypt(encryptedDetails);
+
+    // Calculate the hash for ID||DETAILS and compare to received hash
+    String calculatedHash = Utils.sha1Hash(id + details);
+    if (!hash.equals(calculatedHash)) {
+      System.err.println("Calculated hash didn't match provided hash!");
+      return null;
+    }
+
+    // Build up file into original form
+    return id + "-" + details;
+  }
+
   private String aesDecrypt(String message) {
     return Utils.decrypt(aesDecipher, message);
   }
@@ -138,7 +175,12 @@ public class Client {
     KeyStore jksKeyStore = Utils.loadKeyStore("JKS", "client.jks", "fishtitty");
     KeyStore jckKeyStore = Utils.loadKeyStore("JCEKS", "clientsecret.jck", "fishtitty");
     Client client = new Client(jksKeyStore, jckKeyStore);
-    client.performHandshake();
+    //client.performHandshake();
+
+    /*String packagedFile = client.packageFile("ID007-Bond,James,High Priority");
+    System.out.println("Packaged file: " + packagedFile);
+    String unpackagedFile = client.unpackageFile(packagedFile);
+    System.out.println("Unpackaged file: " + unpackagedFile);*/
   }
 
 }
