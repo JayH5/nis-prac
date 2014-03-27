@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyPair;
@@ -17,6 +18,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Security;
 import java.security.UnrecoverableEntryException;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,9 +30,12 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.BadPaddingException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Base64;
+
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
 
 /**
@@ -42,7 +47,14 @@ public final class Utils {
 
   private static final int KEYSIZE_RSA = 2048;
   private static final String ALGORITHM_RSA = "RSA/ECB/PKCS1Padding";
-  private static final int KEYSIZE_AES = 256;
+
+  private static final byte[] EMPTY_IV = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  private static final int KEYSIZE_AES = 128;
+  private static final String ALGORITHM_AES = "AES/CBC/PKCS5Padding";
+
+  static {
+    Security.addProvider(new BouncyCastleProvider());
+  }
 
   /** Read a file into a list of Strings. */
   public static List<String> readFileLines(String path) throws IOException, FileNotFoundException {
@@ -167,11 +179,11 @@ public final class Utils {
     return new BigInteger(130, random).toString(32);
   }
 
-  /** Load a KeyStore from a Jave Key Store (.jks) file of the given name. */
-  public static KeyStore loadJKSKeyStore(String filename, String password) {
+  /** Load a KeyStore file from the 'keys' folder of the given name. */
+  public static KeyStore loadKeyStore(String type, String filename, String password) {
     KeyStore keyStore = null;
     try {
-      keyStore = KeyStore.getInstance("JKS");
+      keyStore = KeyStore.getInstance(type);
     } catch (KeyStoreException e) {
       System.err.println("Error getting KeyStore instance!");
       e.printStackTrace();
@@ -220,6 +232,16 @@ public final class Utils {
     KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias, password);
     if (entry instanceof KeyStore.PrivateKeyEntry) {
       return ((KeyStore.PrivateKeyEntry) entry).getPrivateKey();
+    }
+    return null;
+  }
+
+  /** Load a SecretKey from the given KeyStore with the given alias. */
+  public static SecretKey loadSecretKeyFromKeyStore(KeyStore keyStore, String alias,
+      String password) {
+    KeyStore.Entry entry = loadEntryFromKeyStore(keyStore, alias, password);
+    if (entry instanceof KeyStore.SecretKeyEntry) {
+      return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
     }
     return null;
   }
@@ -294,6 +316,28 @@ public final class Utils {
         cipher.init(mode, key);
       } catch (InvalidKeyException e) {
         System.err.println("Invalid key!");
+        e.printStackTrace();
+      }
+    }
+    return cipher;
+  }
+
+  /**
+   * Get a Cipher with the default AES implementation, initialized with the
+   * given mode and key.
+   */
+  public static Cipher getAesCipherInstance(int mode, Key key) {
+    SecretKeySpec keySpec = new SecretKeySpec(key.getEncoded(), "AES");
+    IvParameterSpec ivSpec = new IvParameterSpec(EMPTY_IV);
+    Cipher cipher = getCipherInstance(ALGORITHM_AES);
+    if (cipher != null) {
+      try {
+        cipher.init(mode, keySpec, ivSpec);
+      } catch (InvalidKeyException e) {
+        System.err.println("Invalid key!");
+        e.printStackTrace();
+      } catch (InvalidAlgorithmParameterException e) {
+        System.err.println("Invalid algorithm parameter!");
         e.printStackTrace();
       }
     }

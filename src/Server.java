@@ -52,14 +52,11 @@ import org.apache.http.util.EntityUtils;
 import org.apache.http.client.utils.URLEncodedUtils;
 
 public class Server {
-  static {
-    Security.addProvider(new BouncyCastleProvider());
-  }
 
   private static final int PORT = 8080;
 
   public static void main(String[] args) throws Exception {
-    Server server = new Server(Utils.loadJKSKeyStore("server.jks", "tittyfish"), "files/");
+    Server server = new Server(Utils.loadKeyStore("JKS", "server.jks", "tittyfish"), "files/");
     server.listen(PORT);
   }
 
