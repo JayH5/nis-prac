@@ -54,6 +54,8 @@ import org.apache.http.client.utils.URLEncodedUtils;
 public class Server {
 
   private static final int PORT = 8080;
+  private static final String HTTP_AUTH_PATH = "/auth";
+  private static final String HTTP_FILE_PATH = "/files";
 
   public static void main(String[] args) throws Exception {
     Server server = new Server(Utils.loadKeyStore("JKS", "server.jks", "tittyfish"), "./serverfiles");
@@ -82,12 +84,14 @@ public class Server {
         .add(new ResponseContent())
         .add(new ResponseConnControl()).build();
 
-    AuthManager authManager = new AuthManager();
+    SessionKey sessionKey = new SessionKey();
+    Certificate clientCert = Utils.loadCertificateFromKeyStore(keyStore, "client");
+    PrivateKey serverKey = Utils.loadPrivateKeyFromKeyStore(keyStore, "server", "tittyfish");
 
     // Set up request handlers
     UriHttpRequestHandlerMapper reqistry = new UriHttpRequestHandlerMapper();
-    reqistry.register("/auth", new AuthorizationHandler(keyStore, authManager));
-    reqistry.register("/files", new FileHandler(authManager, docRoot));
+    reqistry.register(HTTP_AUTH_PATH, new AuthorizationHandler(serverKey, clientCert, sessionKey));
+    reqistry.register(HTTP_FILE_PATH, new FileHandler(serverKey, clientCert, sessionKey, docRoot));
     reqistry.register("*", new DefaultHandler());
 
     // Set up the HTTP service

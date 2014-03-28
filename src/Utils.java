@@ -1,7 +1,10 @@
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.IOException;
 import java.math.BigInteger;
@@ -19,6 +22,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.Security;
+import java.security.SecureRandom;
 import java.security.UnrecoverableEntryException;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +52,7 @@ public final class Utils {
   private static final int KEYSIZE_RSA = 2048;
   private static final String ALGORITHM_RSA = "RSA/ECB/PKCS1Padding";
 
-  private static final byte[] EMPTY_IV = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  private static final byte[] EMPTY_IV = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   private static final int KEYSIZE_AES = 128;
   private static final String ALGORITHM_AES = "AES/CBC/PKCS5Padding";
 
@@ -57,9 +61,9 @@ public final class Utils {
   }
 
   /** Read a file into a list of Strings. */
-  public static List<String> readFileLines(String path) throws IOException, FileNotFoundException {
+  public static List<String> readFileLines(File file) throws IOException, FileNotFoundException {
     List<String> lines = new ArrayList<String>();
-    BufferedReader br = new BufferedReader(new FileReader(path));
+    BufferedReader br = new BufferedReader(new FileReader(file));
     try {
       for (String line; (line = br.readLine()) != null;) {
         lines.add(line);
@@ -68,6 +72,32 @@ public final class Utils {
       br.close();
     }
     return lines;
+  }
+
+  /*public static String readFile(File file) throws IOException, FileNotFoundException {
+    StringBuilder sb = new StringBuilder();
+    BufferedReader br = new BufferedReader(new FileReader(file));
+    try {
+      for (String line; (line = br.readLine()) != null;) {
+        sb.append(line);
+      }
+    } finally {
+      br.close();
+    }
+    return sb.toString();
+  }*/
+
+  public static void appendToFile(File file, String line) throws IOException {
+    //PrintWrite out
+  }
+
+  public static void writeFile(File file, String contents) throws IOException {
+    BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+    try {
+      bw.write(contents);
+    } finally {
+      bw.close();
+    }
   }
 
   /** Calculate the SHA-1 hash of some data. */
@@ -94,7 +124,7 @@ public final class Utils {
       return null;
     }
 
-    return Hex.toHexString(hash);
+    return new String(Base64.encodeBase64(hash));
   }
 
   /** Generate the Hmac/SHA-1 digest for the given data using the given key. */
@@ -158,7 +188,7 @@ public final class Utils {
   }
 
   /** Generate a secret key suitable for AES. */
-  public static SecretKey generateAESKeyPair() {
+  public static SecretKey generateAESSecretKey() {
     SecretKey key = null;
     try {
       KeyGenerator generator = KeyGenerator.getInstance("AES", "BC");
@@ -175,8 +205,23 @@ public final class Utils {
   }
 
   /** Generate random string for session keys. */
-  public static String generateChallengeValue(Random random) {
-    return new BigInteger(130, random).toString(32);
+  public static String generateChallengeValue(SecureRandom random) {
+    byte[] bytes = new byte[KEYSIZE_AES / 8];
+    random.nextBytes(bytes);
+    return new String(Base64.encodeBase64(bytes));
+  }
+
+  /** XOR the client and server challenges to produce a session key. */
+  public static byte[] calculateSessionKey(String clientChallenge, String serverChallenge) {
+    BigInteger clientPart = new BigInteger(Base64.decodeBase64(clientChallenge));
+    BigInteger serverPart = new BigInteger(Base64.decodeBase64(serverChallenge));
+    BigInteger key = clientPart.xor(serverPart);
+    return key.toByteArray();
+  }
+
+  /** Check if the given challenge is a 128-bit value. */
+  public static boolean isValidChallenge(String challenge) {
+    return Base64.decodeBase64(challenge).length * 8 == KEYSIZE_AES;
   }
 
   /** Load a KeyStore file from the 'keys' folder of the given name. */
@@ -327,7 +372,11 @@ public final class Utils {
    * given mode and key.
    */
   public static Cipher getAesCipherInstance(int mode, Key key) {
-    SecretKeySpec keySpec = new SecretKeySpec(key.getEncoded(), "AES");
+    return getAesCipherInstance(mode, key.getEncoded());
+  }
+
+  public static Cipher getAesCipherInstance(int mode, byte[] key) {
+    SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
     IvParameterSpec ivSpec = new IvParameterSpec(EMPTY_IV);
     Cipher cipher = getCipherInstance(ALGORITHM_AES);
     if (cipher != null) {

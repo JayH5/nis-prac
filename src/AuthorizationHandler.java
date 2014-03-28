@@ -11,6 +11,9 @@ import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import javax.crypto.Cipher;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpException;
@@ -20,6 +23,7 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.ProtocolException;
 import org.apache.http.MethodNotSupportedException;
+import org.apache.http.client.fluent.Form;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.protocol.HttpContext;
@@ -29,95 +33,103 @@ import org.apache.http.client.utils.URLEncodedUtils;
 
 public class AuthorizationHandler implements HttpRequestHandler {
 
-    private final AuthManager authManager;
-    private final SecureRandom random = new SecureRandom();
+  private static final Log LOG = LogFactory.getLog(AuthorizationHandler.class);
 
-    // The session key for auth that is not yet confirmed
-    private String pendingAuth;
+  private final SecureRandom random = new SecureRandom();
 
-    private Cipher decipher;
-    private Cipher encipher;
+  // The session key for auth that is not yet confirmed
+  private String clientChallenge;
+  private String serverChallenge;
 
-    public AuthorizationHandler(KeyStore keyStore, AuthManager authManager) {
-      this.authManager = authManager;
-      initCrypto(keyStore);
-    }
+  private Cipher decipher;
+  private Cipher encipher;
 
-    private void initCrypto(KeyStore keyStore) {
-      Certificate clientCert = Utils.loadCertificateFromKeyStore(keyStore, "client");
-      encipher = Utils.getRsaCipherInstance(Cipher.ENCRYPT_MODE, clientCert);
+  private final SessionKey sessionKey;
 
-      PrivateKey serverKey = Utils.loadPrivateKeyFromKeyStore(keyStore, "server", "tittyfish");
-      decipher = Utils.getRsaCipherInstance(Cipher.DECRYPT_MODE, serverKey);
-    }
+  public AuthorizationHandler(PrivateKey serverKey, Certificate clientCert, SessionKey sessionKey) {
+    encipher = Utils.getRsaCipherInstance(Cipher.ENCRYPT_MODE, clientCert);
+    decipher = Utils.getRsaCipherInstance(Cipher.DECRYPT_MODE, serverKey);
 
-    @Override
-    public void handle(HttpRequest request, HttpResponse response, HttpContext context)
-        throws HttpException, IOException {
-      String method = HttpUtils.parseMethod(request);
-      if (!method.equals("POST")) {
-        throw new MethodNotSupportedException(method + " method not supported");
-      }
-      String target = request.getRequestLine().getUri();
-
-      URI uri = null;
-      try {
-        uri = new URI(target);
-      } catch (URISyntaxException e) {
-        throw new ProtocolException(target + " uri not supported");
-      }
-
-      System.out.println("target = " + target);
-
-      // Get auth post form data
-      String entityContent = HttpUtils.parseStringContent(request);
-
-      String decryptedEntity = decrypt(entityContent);
-
-      System.out.println("Entity: " + decryptedEntity);
-
-      // Find signature among parameters
-      Map<String, String> queryParams = HttpUtils.parseQueryParams(decryptedEntity);
-      String action = queryParams.get("action");
-      String token = queryParams.get("token");
-
-      if (action != null && token != null) {
-        if ("initiate".equals(action)) {
-          // Take token, repond with new random number
-          String responseToken = Utils.generateChallengeValue(random);
-          pendingAuth = token + responseToken;
-          response.setStatusCode(HttpStatus.SC_OK);
-          StringEntity entity = new StringEntity(encrypt(pendingAuth));
-          response.setEntity(entity);
-        } else if ("confirm".equals(action)) {
-          if (pendingAuth != null && pendingAuth.equals(token)) {
-            pendingAuth += token;
-            updateSessionKey();
-            response.setStatusCode(HttpStatus.SC_OK);
-            StringEntity entity = new StringEntity(encrypt("Oh hai, client!"));
-            response.setEntity(entity);
-          } else {
-            HttpUtils.forbidden(response);
-          }
-        }
-      } else {
-        HttpUtils.forbidden(response);
-      }
-    }
-
-    private String encrypt(String message) {
-      return Utils.encrypt(encipher, message);
-    }
-
-    private String decrypt(String message) {
-      return Utils.decrypt(decipher, message);
-    }
-
-    private void updateSessionKey() {
-      if (pendingAuth != null) {
-        authManager.setSessionKey(pendingAuth);
-        pendingAuth = null;
-      }
-    }
-
+    this.sessionKey = sessionKey;
   }
+
+  @Override
+  public void handle(HttpRequest request, HttpResponse response, HttpContext context)
+      throws HttpException, IOException {
+    String method = HttpUtils.parseMethod(request);
+    if (!method.equals("POST")) {
+      throw new MethodNotSupportedException(method + " method not supported");
+    }
+
+    // Get auth post form data
+    String entityContent = HttpUtils.parseStringContent(request);
+
+    String decryptedEntity = decrypt(entityContent);
+
+    LOG.debug("Incoming auth request: " + decryptedEntity);
+
+    // Find signature among parameters
+    Map<String, String> queryParams = HttpUtils.parseQueryParams(decryptedEntity);
+    String action = queryParams.get("action");
+
+    if ("initiate".equals(action)) {
+      String challenge = queryParams.get("client_challenge");
+      LOG.debug("Client challenge " + challenge);
+
+      if (challenge == null || !Utils.isValidChallenge(challenge)) {
+        LOG.warn("Invalid challenge from client!");
+        LOG.warn("Cannot continue with handshake.");
+        HttpUtils.forbidden(response);
+        return;
+      }
+      clientChallenge = challenge;
+
+      // Respond with client challenge and own challenge
+      serverChallenge = Utils.generateChallengeValue(random);
+      List<NameValuePair> params = Form.form()
+          .add("client_challenge", clientChallenge)
+          .add("server_challenge", serverChallenge)
+          .build();
+
+      String responseContent = HttpUtils.buildParamsString(params);
+
+      // Respond with code 200, encrypt client and server challenges
+      response.setStatusCode(HttpStatus.SC_OK);
+      StringEntity entity = new StringEntity(encrypt(responseContent));
+      response.setEntity(entity);
+    } else if ("confirm".equals(action)) {
+      String challenge = queryParams.get("server_challenge");
+      LOG.debug("Client response to challenge " + challenge);
+
+      // Check that challenge matches
+      if (serverChallenge == null || !serverChallenge.equals(challenge)) {
+        LOG.warn("Handshake not initialized or challenge mismatch!");
+        LOG.warn("Cannot continue with handshake.");
+        HttpUtils.forbidden(response);
+
+        // Reset challenges
+        clientChallenge = null;
+        serverChallenge = null;
+        return;
+      }
+
+      // Respond A-OK TODO: Send validFrom/validUntil dates
+      response.setStatusCode(HttpStatus.SC_OK);
+      byte[] sessionKeyData = Utils.calculateSessionKey(clientChallenge, serverChallenge);
+      sessionKey.setSessionKeyData(sessionKeyData);
+    } else {
+      LOG.warn("Invalid auth action from client: " + action);
+      LOG.warn("Cannot continue with handshake.");
+      HttpUtils.forbidden(response);
+    }
+  }
+
+  private String encrypt(String message) {
+    return Utils.encrypt(encipher, message);
+  }
+
+  private String decrypt(String message) {
+    return Utils.decrypt(decipher, message);
+  }
+
+}
