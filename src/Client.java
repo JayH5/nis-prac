@@ -363,15 +363,9 @@ public class Client {
     KeyStore jckKeyStore = Utils.loadKeyStore("JCEKS", "clientsecret.jck", "fishtitty");
     Client client = new Client(jksKeyStore, jckKeyStore, "./clientfiles");
 
-    //
     client.performHandshake();
-    client.sendFile("ID007.txt");
-    System.out.println(client.fetchLine("ID007"));
-
-    /*String packagedFile = client.packageFile("ID007-Bond,James,High Priority");
-    System.out.println("Packaged file: " + packagedFile);
-    String unpackagedFile = client.unpackageFile(packagedFile);
-    System.out.println("Unpackaged file: " + unpackagedFile);*/
+    client.sendFile("baconipsum.txt");
+    System.out.println(client.fetchLine("ID643"));
   }
 
 }

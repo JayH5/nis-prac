@@ -114,6 +114,7 @@ public class FileHandler implements HttpRequestHandler {
   private void saveFile(String content, HttpResponse response) throws IOException {
     // Parse the ID so we know where to save
     String[] lines = content.split("\n");
+    LOG.info("Saving file with " + lines.length + " lines.");
     for (int i = 0; i < lines.length; i++) {
       String line = lines[i];
       // Skip empty lines (e.g. trailing newlines)
@@ -155,7 +156,7 @@ public class FileHandler implements HttpRequestHandler {
         Utils.writeFileLines(file, fileLines);
       } else {
         // Just write to the file
-        Utils.writeFile(file, content);
+        Utils.writeFile(file, line);
       }
       response.setStatusCode(HttpStatus.SC_OK);
       LOG.info("File with id " + id + " was succesfully saved.");

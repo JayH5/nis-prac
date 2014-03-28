@@ -92,6 +92,7 @@ public final class Utils {
     try {
       for (String line : lines) {
         bw.write(line);
+        bw.write('\n');
       }
     } finally {
       bw.close();
