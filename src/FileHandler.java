@@ -113,37 +113,85 @@ public class FileHandler implements HttpRequestHandler {
 
   private void saveFile(String content, HttpResponse response) throws IOException {
     // Parse the ID so we know where to save
-    Matcher matcher = ID_PATTERN.matcher(content);
-    if (!matcher.matches()) { // Couldn't find ID
-      LOG.warn("ID couldn't be extracted from message!");
-      HttpUtils.forbidden(response);
-      return;
+    String[] lines = content.split("\n");
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i];
+      // Skip empty lines (e.g. trailing newlines)
+      if (line.isEmpty()) {
+        continue;
+      }
+
+      Matcher matcher = ID_PATTERN.matcher(line);
+      if (!matcher.matches()) { // Couldn't find ID
+        LOG.warn("ID couldn't be extracted from message!");
+      }
+
+      String id = matcher.group("id");
+
+      // Split lines into files by the 100
+      String fileName = getFileContainingID(id);
+
+      File file = new File(docRoot, fileName);
+      if (file.exists()) {
+        // Open file and check if line already in file
+        List<String> fileLines = Utils.readFileLines(file);
+        int pos = -1;
+        for (int j = 0, n = fileLines.size(); j < n; j++) {
+          String fileLine = fileLines.get(j);
+          if (fileLine.startsWith(id)) {
+            pos = j;
+            break;
+          }
+        }
+
+        // If found in file, replace with new content
+        if (pos > -1) {
+          fileLines.set(pos, line);
+        } else {
+          fileLines.add(line);
+        }
+
+        // Write back to file
+        Utils.writeFileLines(file, fileLines);
+      } else {
+        // Just write to the file
+        Utils.writeFile(file, content);
+      }
+      response.setStatusCode(HttpStatus.SC_OK);
+      LOG.info("File with id " + id + " was succesfully saved.");
     }
-
-    String id = matcher.group("id");
-
-    File file = new File(docRoot, id);
-    Utils.writeFile(file, content);
-    response.setStatusCode(HttpStatus.SC_OK);
-    LOG.info("File with id " + id + " was succesfully saved.");
   }
 
   private void serveFile(String id, HttpResponse response, Cipher sessionEncipher)
       throws IOException {
     LOG.debug("Serving file with id: " + id);
-    File file = new File(docRoot, id);
+    String filename = getFileContainingID(id);
+    File file = new File(docRoot, filename);
     if (!file.exists()) {
-      LOG.warn("File with " + id + " does not exist!");
+      LOG.warn("Line with " + id + " does not exist!");
       HttpUtils.notFound(response);
       return;
     }
 
-    // Read the file
-    String fileContents = Utils.readFile(file);
-    System.out.println("File contents: " + fileContents);
+    // Read the file, searching for the requested line.
+    List<String> fileLines = Utils.readFileLines(file);
+    String line = null;
+    for (String fileLine : fileLines) {
+      if (fileLine.startsWith(id)) {
+        line = fileLine;
+        break;
+      }
+    }
+
+    if (line == null) {
+      LOG.warn("Line with " + id + " does not exist!");
+      HttpUtils.notFound(response);
+      return;
+    }
+
     // Form a response
     List<NameValuePair> params = Form.form()
-        .add("file", fileContents)
+        .add("line", line)
         .build();
 
     // Sign, encrypt and send off
@@ -152,6 +200,15 @@ public class FileHandler implements HttpRequestHandler {
     response.setEntity(new StringEntity(responseString, ContentType.create("text/plain")));
 
     LOG.info("Sent file with id " + id);
+  }
+
+  /**
+   * Lines are stored by the hundred.
+   * i.e. ID000 - ID099 go in a file called '0', ID300-ID399 go in '3'.
+   * Sorry hax.
+   */
+  private String getFileContainingID(String id) {
+    return String.valueOf(Integer.parseInt(id.replace("ID", "")) / 100);
   }
 
   private String signAndEncryptResponse(List<NameValuePair> params, Cipher sessionEncipher) {

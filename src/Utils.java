@@ -74,7 +74,7 @@ public final class Utils {
     return lines;
   }
 
-  /*public static String readFile(File file) throws IOException, FileNotFoundException {
+  public static String readFile(File file) throws IOException, FileNotFoundException {
     StringBuilder sb = new StringBuilder();
     BufferedReader br = new BufferedReader(new FileReader(file));
     try {
@@ -85,10 +85,17 @@ public final class Utils {
       br.close();
     }
     return sb.toString();
-  }*/
+  }
 
-  public static void appendToFile(File file, String line) throws IOException {
-    //PrintWrite out
+  public static void writeFileLines(File file, List<String> lines) throws IOException {
+    BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+    try {
+      for (String line : lines) {
+        bw.write(line);
+      }
+    } finally {
+      bw.close();
+    }
   }
 
   public static void writeFile(File file, String contents) throws IOException {

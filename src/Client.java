@@ -197,7 +197,7 @@ public class Client {
       if (packagedLine == null) {
         LOG.warn("File line " + i + " is malformed.");
       } else {
-        sb.append(line);
+        sb.append(packagedLine);
         sb.append('\n');
       }
     }
@@ -224,10 +224,10 @@ public class Client {
   }
 
   /** Fetch the file with the given filename. */
-  public void fetchFile(String id, String filename) throws IOException {
+  public String fetchLine(String id) throws IOException {
     if (sessionEncipher == null || sessionDecipher == null) {
       LOG.warn("Session cipher not initialized, cannot fetch file.");
-      return;
+      return null;
     }
 
     // Specify the request
@@ -246,7 +246,7 @@ public class Client {
     LOG.info("Server responded with status code " + responseCode);
     if (responseCode != HttpStatus.SC_OK) {
       LOG.error("Server rejected request!");
-      return;
+      return null;
     }
 
     String decryptedResponse =
@@ -259,7 +259,7 @@ public class Client {
     String signature = responseParams.remove("signature");
     if (signature == null) {
       LOG.warn("Request not signed! Rejecting request...");
-      return;
+      return null;
     }
     String digest = Utils.decrypt(signingDecipher, signature);
 
@@ -268,22 +268,20 @@ public class Client {
     String calculatedSignature = Utils.sha1Hash(stringToSign);
     if (!calculatedSignature.equals(digest)) {
       LOG.error("Signature mismatch! Couldn't ensure integrity of file.");
-      return;
+      return null;
     }
 
     // Decrypt the contents of the server response
-    String packagedFile = responseParams.get("file");
-    LOG.info("Packaged file: " + packagedFile);
+    String packagedLine = responseParams.get("line");
+    LOG.info("Packaged line: " + packagedLine);
 
-    // Unpackage the file and save it
-    String unpackagedFile = unpackageFile(packagedFile);
-    LOG.debug("Unpackaged file: " + unpackagedFile);
-    if (unpackagedFile != null) {
-      File file = new File(docRoot, filename);
-      Utils.writeFile(file, unpackagedFile);
-    } else {
+    // Unpackage the line and return it
+    String unpackagedLine = unpackageLine(packagedLine);
+    LOG.debug("Unpackaged file: " + unpackagedLine);
+    if (unpackagedLine == null) {
       LOG.error("Failed to unpack file!");
     }
+    return unpackagedLine;
   }
 
   private String signAndEncryptFileRequest(List<NameValuePair> params) {
@@ -368,7 +366,7 @@ public class Client {
     //
     client.performHandshake();
     client.sendFile("ID007.txt");
-    client.fetchFile("ID007", "ID007(1).txt");
+    System.out.println(client.fetchLine("ID007"));
 
     /*String packagedFile = client.packageFile("ID007-Bond,James,High Priority");
     System.out.println("Packaged file: " + packagedFile);
